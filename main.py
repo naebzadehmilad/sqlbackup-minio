@@ -39,6 +39,7 @@ def config():
     global dump
     global minioactive
     global execute
+    global extrafile
     if os.path.exists('conf.cfg'):
         print('##config.cfg is exist##')
     else:
@@ -46,7 +47,6 @@ def config():
         conf.set('INFO', 'info', 'command=###mysqldump or xtrabackup ######execute =systemctl or docker')
         conf.add_section('COMMAND')
         conf.set('COMMAND', 'command', 'mysqldump')
-
 
         conf.add_section('HOSTDB')
         conf.set('HOSTDB', 'hostdb', '127.0.0.1')
@@ -74,6 +74,8 @@ def config():
         conf.set('PATH_BACKUP', 'path_backup', '/opt/mysqldumps/')
         conf.add_section('DELETEBACKUPS')
         conf.set('DELETEBACKUPS', 'minutes', '14400')  # 14400min =10days
+        conf.add_section('DEFAULTS-EXTRA-FILE')
+        conf.set('DEFAULTS-EXTRA-FILE', 'PATH', './my.cnf')  # 14400min =10days
         with open('conf.cfg', 'w') as configfile:
             conf.write(configfile)
         configfile.close()
@@ -95,7 +97,7 @@ def config():
     minioactive = conf.get('MINIO', 'minio')
     minutes = conf.get('DELETEBACKUPS', 'minutes')
     execute = conf.get('EXECUTE', 'execute')
-
+    extrafile = conf.get('DEFAULTS-EXTRA-FILE','PATH')
     isExist = os.path.exists(pathbackup)
     if not isExist:
         # Create a new directory because it does not exist 
@@ -107,26 +109,26 @@ def config():
     tm = Template(
         "[client] \nuser={{ dbuser }}\npassword={{dbpass}}\nport={{dbport}}\n[mysql]\nhost={{dbhost}}\ndatabase={{namedb}}")
     mycnf = tm.render(dbuser=userdb, dbpass=passdb, dbhost=hostdb, namedb=dbname, dbport=portdb)
-    if os.path.exists('./.my.cnf'):
+    if os.path.exists(f'{extrafile}'):
         print('##./.my.cnf is exist##')
     else:
         try:
-            with open('./.my.cnf', 'w') as cnf:
+            with open(f'{extrafile}', 'w') as cnf:
                 cnf.write(mycnf)
             cnf.close()
-            os.system('chmod 700 ./.my.cnf ; stat ./.my.cnf')
-            logging.info("./.my.cnf  created!")
+            os.system(f'chmod 700 {extrafile} ; stat {extrafile}')
+            logging.info(f"{extrafile}  created!")
         except:
             logging.error("can't create file .my.cnf")
 
     if command == 'mysqldump':
-        dump = f'{command} --defaults-extra-file=./.my.cnf  -v   --single-transaction --max_allowed_packet=1G  {dbname} > {pathbackup}{dbname}-{now}.sql '
+        dump = f'{command} --defaults-extra-file={extrafile}  -v   --single-transaction --max_allowed_packet=1G  {dbname} > {pathbackup}{dbname}-{now}.sql '
         logging.info(dump)
         if minioactive == 'true':
             tar = f'tar -cvf /tmp/{dbname}-{now}.tar {pathbackup}{dbname}-{now}.sql '
             rmtar = f'rm -rf /tmp/{dbname}-{now}.tar '
     if command == 'xtrabackup':
-        dump = f'xtrabackup -u{userdb} -p{passdb} --backup --databases={dbname}  --target-dir={pathbackup}{dbname}-{now}.xtra --no-lock --host={hostdb} '
+        dump = f'xtrabackup --defaults-extra-file={extrafile}  -u{userdb} -p{passdb} --backup --databases={dbname}  --target-dir={pathbackup}{dbname}-{now}.xtra --no-lock --host={hostdb} '
         logging.info(dump)
         if minioactive == 'true':
             tar = f'tar -cvf /tmp/{dbname}-{now}.xtra.tar {pathbackup}{dbname}-{now}.xtra '
